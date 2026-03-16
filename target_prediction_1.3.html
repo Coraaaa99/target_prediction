@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>各门店目标精算系统 (占比微调稳定版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f4f8; color: #333; padding: 20px; max-width: 1200px; margin: 0 auto; line-height: 1.6; }
+        h1 { text-align: center; color: #1a365d; margin-bottom: 30px; }
+        .card { background: #fff; padding: 25px 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .target-inputs { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px; }
+        .target-box { flex: 1; min-width: 200px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #4a5568; }
+        input[type="number"], input[type="file"], textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; box-sizing: border-box; font-family: inherit; }
+        .btn { display: inline-block; width: 100%; padding: 14px; background-color: #3182ce; color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.3s; margin-top: 10px; }
+        .btn:hover:not(:disabled) { background-color: #2b6cb0; }
+        .btn:disabled { background-color: #a0aec0; cursor: not-allowed; }
+        .btn-export { background-color: #38a169; width: auto; padding: 10px 20px; margin-bottom: 15px; }
+        .btn-export:hover { background-color: #2f855a; }
+        #statusMsg { margin-top: 15px; padding: 10px; border-radius: 6px; font-weight: bold; display: none; text-align: center; }
+        
+        /* 表格样式 */
+        .table-wrapper { overflow-x: auto; max-height: 600px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+        thead th { position: sticky; top: 0; background-color: #edf2f7; color: #2d3748; z-index: 1; box-shadow: 0 1px 2px rgba(0,0,0,0.1); padding: 10px 12px; border-right: 1px dashed #cbd5e0;}
+        th, td { padding: 10px 12px; text-align: center; border-bottom: 1px solid #e2e8f0; border-right: 1px dashed #e2e8f0; }
+        tbody tr:hover { background-color: #f7fafc; }
+        .highlight { color: #c53030; font-weight: bold; background-color: #fff5f5; }
+        .detail-col { color: #718096; font-size: 13px; }
+
+        /* 逻辑说明模块样式 */
+        .doc-section { background-color: #fff; border-top: 4px solid #319795; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-top: 30px; }
+        .doc-section h2 { color: #2c7a7b; margin-top: 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
+        .doc-section h3 { color: #2b6cb0; margin-top: 25px; }
+        .doc-section p { color: #4a5568; }
+        .doc-formula { background-color: #ebf8fa; padding: 12px 15px; border-radius: 6px; font-family: monospace; font-size: 15px; color: #000; margin: 10px 0; border-left: 4px solid #319795; }
+        .doc-example { background-color: #fffaf0; border: 1px solid #fbd38d; padding: 20px; border-radius: 8px; margin-top: 25px; }
+        .doc-example h4 { margin-top: 0; color: #dd6b20; }
+        .doc-list li { margin-bottom: 8px; color: #4a5568; }
+    </style>
+</head>
+<body>
+
+    <h1>🎯 门店渠道目标精算系统</h1>
+
+    <div class="card">
+        <div class="form-group">
+            <label>1. 上传聚合表数据 (确保是 .xlsx 文件):</label>
+            <input type="file" id="excelFileInput" accept=".xlsx, .xls">
+        </div>
+        
+        <div class="form-group">
+            <label>2. 参与下月预测的门店名单 (不在名单内的将被剔除):</label>
+            <textarea id="storeWhitelist" rows="3">厦门宝龙一城、厦门海沧马青路、厦门湖里翔远路、厦门集美岩兴路、泉州晋江、泉州洛江、泉州鲤城、漳州龙文北路、福州东二环泰禾、福州仓山万达、福州仓山金林路、福州榕泰、莆田城厢万达、龙岩新罗物流大道</textarea>
+        </div>
+
+        <label>3. 请输入预测参数:</label>
+        <div class="target-inputs">
+            <div class="target-box"><label>🏬 门店总目标:</label><input type="number" id="targetStore" value="10000" min="0"></div>
+            <div class="target-box"><label>🎪 外展总目标:</label><input type="number" id="targetExhibition" value="5000" min="0"></div>
+            <div class="target-box"><label>🤝 推荐总目标:</label><input type="number" id="targetReferral" value="200" min="0"></div>
+            <div class="target-box"><label>🔄 车主复购总目标:</label><input type="number" id="targetRepurchase" value="1000" min="0"></div>
+            <div class="target-box" style="background: #fffaf0; border-color: #fbd38d;">
+                <label>⚙️ 达成率微调强度 (%):</label><input type="number" id="tuningFactor" value="50" min="0" max="100">
+            </div>
+        </div>
+        
+        <button id="runBtn" class="btn" onclick="startProcess()">🚀 执行精算与目标分配</button>
+        <div id="statusMsg"></div>
+    </div>
+
+    <div class="card" id="resultCard" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2 style="margin: 0;">📊 分配明细结果</h2>
+            <button class="btn btn-export" onclick="exportToExcel()" style="margin: 0;">📥 导出结果为Excel</button>
+        </div>
+        <div class="table-wrapper">
+            <table id="resultTable">
+                <thead>
+                    <tr>
+                        <th rowspan="2">城市</th><th rowspan="2">门店名称</th>
+                        <th colspan="2" style="background-color: #e2e8f0;">🏬 门店渠道</th>
+                        <th colspan="2" style="background-color: #e2e8f0;">🎪 外展渠道</th>
+                        <th colspan="2" style="background-color: #e2e8f0;">🤝 推荐渠道</th>
+                        <th colspan="2" style="background-color: #e2e8f0;">🔄 复购渠道</th>
+                        <th rowspan="2" style="background-color: #bee3f8;">合计总目标</th>
+                    </tr>
+                    <tr>
+                        <th class="detail-col">历史占比</th><th class="highlight">预测目标</th>
+                        <th class="detail-col">历史占比</th><th class="highlight">预测目标</th>
+                        <th class="detail-col">历史占比</th><th class="highlight">预测目标</th>
+                        <th class="detail-col">历史占比</th><th class="highlight">预测目标</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="doc-section">
+        <h2>📖 详细预测逻辑说明</h2>
+        <p>所有的计算都是<strong>分渠道独立进行</strong>的（即门店的成绩只影响门店渠道的目标，外展只影响外展目标）。以下是某个渠道下的具体计算步骤：</p>
+
+        <h3>第一步：计算“基础占比”（切分基本盘）</h3>
+        <p>系统会先算出每一家门店在该渠道下的“历史实际量”占所有白名单门店“历史实际量总和”的比例。</p>
+        <div class="doc-formula">📌 公式：某门店基础占比 = 该门店历史实际量 ÷ 白名单内所有门店的历史实际量总和</div>
+        <p><strong>业务意义：</strong> 这一步决定了目标分配的大头。历史产出越大的核心店，分到的基础目标就越多，确保大盘稳定。</p>
+
+        <h3>第二步：计算“达成率微调系数”（潜力倾斜机制）</h3>
+        <p>系统会根据门店的历史达成率，计算出一个调节系数。您可以在上方设置“微调强度（%）”来控制达成率的影响力。</p>
+        <div class="doc-formula">📌 公式：微调系数 = 1 + (该门店历史达成率 - 100%) × 微调强度</div>
+        <ul class="doc-list">
+            <li>如果门店上个月刚好达成了 100%，系数就是 1，目标不增不减。</li>
+            <li>如果门店超额完成（比如 120%），且微调强度设为 50%，则系数为 <code>1 + (120% - 100%) × 50% = 1.1</code>。系统判定该店有潜力，会在基础盘上给予 10% 的额外权重奖励。</li>
+            <li><strong>业务意义：</strong> 兼顾潜力，同时防止基数极小但达成率极高（如 300%）的异常店抢走过多目标导致数据失真。</li>
+        </ul>
+
+        <h3>第三步：得出“综合权重”（基数与潜力的结合）</h3>
+        <p>将第一步的“基础占比”和第二步的“微调系数”相乘，得出该店最终的分配话语权。</p>
+        <div class="doc-formula">📌 公式：综合权重 = 基础占比 × 微调系数</div>
+
+        <h3>第四步：最终目标的瓜分</h3>
+        <p>系统将各门店的“综合权重”加总，然后按照各自的权重比例，去瓜分您设定的下月该渠道总目标。</p>
+        <div class="doc-formula">📌 公式：最终预测目标 = (该店综合权重 ÷ 所有门店综合权重总和) × 该渠道下个月总目标</div>
+        <p><em>（注：最终分配的预测目标数值会自动四舍五入取整数）</em></p>
+
+        <div class="doc-example">
+            <h4>💡 举个极简的例子秒懂：</h4>
+            <p>假设您设置下个月<strong>“外展渠道”的总目标是 1000</strong>。白名单里只有 A 和 B 两家店，设定的<strong>微调强度为 50%</strong>。</p>
+            <ul class="doc-list">
+                <li><strong>已知历史数据：</strong> A店（实际量 80，达成率 120%），B店（实际量 20，达成率 80%）。两人合计量为 100。</li>
+                <li><strong>1. 看基础占比：</strong> A店占 80%，B店占 20%。</li>
+                <li><strong>2. 算微调系数：</strong> A店超额完成，系数 = <code>1 + 20% × 50% = 1.1</code>；B店未完成，系数 = <code>1 - 20% × 50% = 0.9</code>。</li>
+                <li><strong>3. 得综合权重：</strong> A店权重 = <code>80% × 1.1 = 0.88</code>；B店权重 = <code>20% × 0.9 = 0.18</code>。总权重 = 1.06。</li>
+                <li><strong>4. 分发新目标：</strong> A店分得 <code>(0.88 ÷ 1.06) × 1000 = 830</code>；B店分得 <code>(0.18 ÷ 1.06) × 1000 = 170</code>。</li>
+            </ul>
+            <p style="margin-bottom: 0;"><strong>结果复盘：</strong> 如果纯按历史实际量（8:2）分配，A应该分800，B分200。但因为引入了“达成率微调”，表现更好的 A 店合理地多拿了 30 个潜力目标。这就是兼顾了“历史大盘”与“达成潜力”的核心逻辑。</p>
+        </div>
+    </div>
+
+    <script>
+        let finalExportData = []; 
+
+        function showStatus(msg, isError = false) {
+            const statusBox = document.getElementById('statusMsg');
+            statusBox.style.display = 'block';
+            statusBox.style.backgroundColor = isError ? '#fff5f5' : '#f0fff4';
+            statusBox.style.color = isError ? '#c53030' : '#2f855a';
+            statusBox.style.border = `1px solid ${isError ? '#feb2b2' : '#9ae6b4'}`;
+            statusBox.innerHTML = msg;
+        }
+
+        function safeParseNumber(val) {
+            if (val === undefined || val === null || val === '') return 0;
+            let str = String(val).replace(/,/g, '').trim();
+            let num = parseFloat(str);
+            return isNaN(num) ? 0 : Math.max(0, num);
+        }
+
+        function safeParseRate(val) {
+            if (val === '∞' || val === '无穷大' || val === '#DIV/0!') return 1.5; 
+            if (val === undefined || val === null || val === '') return 1;
+            let str = String(val).replace(/%/g, '').replace(/,/g, '').trim();
+            let num = parseFloat(str);
+            if (isNaN(num) || num <= 0) return 1; 
+            return String(val).includes('%') ? num / 100 : num;
+        }
+
+        function startProcess() {
+            const btn = document.getElementById('runBtn');
+            btn.disabled = true;
+            btn.innerText = '⏳ 正在拼命读取并计算中...';
+            document.getElementById('resultCard').style.display = 'none';
+            showStatus('⏳ 正在解析 Excel，请稍候...', false);
+
+            setTimeout(() => {
+                try {
+                    executeCoreLogic();
+                } catch (error) {
+                    console.error(error);
+                    showStatus(`❌ 发生崩溃错误: ${error.message} <br>请确认上传了正确的表格。`, true);
+                    btn.disabled = false;
+                    btn.innerText = '🚀 重新尝试执行';
+                }
+            }, 100);
+        }
+
+        function executeCoreLogic() {
+            const fileInput = document.getElementById('excelFileInput');
+            const whitelistText = document.getElementById('storeWhitelist').value;
+            const allowedStores = whitelistText.split(/[、,，\s\n]+/).filter(v => v.trim() !== '');
+
+            if (!fileInput.files.length) {
+                throw new Error('你还没有上传聚合表 Excel 文件！');
+            }
+            if (allowedStores.length === 0) {
+                throw new Error('请至少输入一家参与预测的门店名字！');
+            }
+
+            const targets = {
+                store: safeParseNumber(document.getElementById('targetStore').value),
+                exhibition: safeParseNumber(document.getElementById('targetExhibition').value),
+                referral: safeParseNumber(document.getElementById('targetReferral').value),
+                repurchase: safeParseNumber(document.getElementById('targetRepurchase').value)
+            };
+            const tuningFactor = safeParseNumber(document.getElementById('tuningFactor').value) / 100;
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+
+                    let stores = [];
+                    let sumActuals = { store: 0, exhibition: 0, referral: 0, repurchase: 0 };
+
+                    for (let i = 0; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        if (!row || !Array.isArray(row) || row.length < 5) continue;
+
+                        const city = String(row[1] || '').trim();
+                        const storeName = String(row[3] || '').trim();
+
+                        if (!storeName || storeName === '合计' || storeName === '福建主播战队' || storeName === '门店部门') {
+                            continue;
+                        }
+
+                        const isAllowed = allowedStores.some(allowed => storeName.includes(allowed));
+
+                        if (isAllowed) {
+                            const actStore = safeParseNumber(row[9]);
+                            const actExh = safeParseNumber(row[13]);
+                            const actRef = safeParseNumber(row[17]);
+                            const actRep = safeParseNumber(row[21]);
+
+                            sumActuals.store += actStore;
+                            sumActuals.exhibition += actExh;
+                            sumActuals.referral += actRef;
+                            sumActuals.repurchase += actRep;
+
+                            stores.push({
+                                city: city, name: storeName,
+                                actuals: { store: actStore, exhibition: actExh, referral: actRef, repurchase: actRep },
+                                rates: {
+                                    store: safeParseRate(row[10]),
+                                    exhibition: safeParseRate(row[14]),
+                                    referral: safeParseRate(row[18]),
+                                    repurchase: safeParseRate(row[22])
+                                },
+                                shares: {}, weights: {}, predicts: {}
+                            });
+                        }
+                    }
+
+                    if (stores.length === 0) {
+                        throw new Error('未在表格中匹配到任何白名单门店！请检查门店名字是否与表格一致。');
+                    }
+
+                    let sumWeights = { store: 0, exhibition: 0, referral: 0, repurchase: 0 };
+
+                    stores.forEach(s => {
+                        s.shares.store = sumActuals.store > 0 ? (s.actuals.store / sumActuals.store) : 0;
+                        s.shares.exhibition = sumActuals.exhibition > 0 ? (s.actuals.exhibition / sumActuals.exhibition) : 0;
+                        s.shares.referral = sumActuals.referral > 0 ? (s.actuals.referral / sumActuals.referral) : 0;
+                        s.shares.repurchase = sumActuals.repurchase > 0 ? (s.actuals.repurchase / sumActuals.repurchase) : 0;
+
+                        s.weights.store = s.shares.store * Math.max(0, 1 + (s.rates.store - 1) * tuningFactor);
+                        s.weights.exhibition = s.shares.exhibition * Math.max(0, 1 + (s.rates.exhibition - 1) * tuningFactor);
+                        s.weights.referral = s.shares.referral * Math.max(0, 1 + (s.rates.referral - 1) * tuningFactor);
+                        s.weights.repurchase = s.shares.repurchase * Math.max(0, 1 + (s.rates.repurchase - 1) * tuningFactor);
+
+                        sumWeights.store += s.weights.store;
+                        sumWeights.exhibition += s.weights.exhibition;
+                        sumWeights.referral += s.weights.referral;
+                        sumWeights.repurchase += s.weights.repurchase;
+                    });
+
+                    finalExportData = []; 
+                    
+                    stores.forEach(s => {
+                        s.predicts.store = sumWeights.store > 0 ? Math.round(targets.store * (s.weights.store / sumWeights.store)) : 0;
+                        s.predicts.exhibition = sumWeights.exhibition > 0 ? Math.round(targets.exhibition * (s.weights.exhibition / sumWeights.exhibition)) : 0;
+                        s.predicts.referral = sumWeights.referral > 0 ? Math.round(targets.referral * (s.weights.referral / sumWeights.referral)) : 0;
+                        s.predicts.repurchase = sumWeights.repurchase > 0 ? Math.round(targets.repurchase * (s.weights.repurchase / sumWeights.repurchase)) : 0;
+                        
+                        s.predicts.total = s.predicts.store + s.predicts.exhibition + s.predicts.referral + s.predicts.repurchase;
+
+                        finalExportData.push({
+                            "城市": s.city, "门店名称": s.name,
+                            "门店渠道-历史占比": (s.shares.store * 100).toFixed(2) + '%',
+                            "门店渠道-预测目标": s.predicts.store,
+                            "外展渠道-历史占比": (s.shares.exhibition * 100).toFixed(2) + '%',
+                            "外展渠道-预测目标": s.predicts.exhibition,
+                            "推荐渠道-历史占比": (s.shares.referral * 100).toFixed(2) + '%',
+                            "推荐渠道-预测目标": s.predicts.referral,
+                            "复购渠道-历史占比": (s.shares.repurchase * 100).toFixed(2) + '%',
+                            "复购渠道-预测目标": s.predicts.repurchase,
+                            "合计总预测目标": s.predicts.total
+                        });
+                    });
+
+                    stores.sort((a, b) => b.predicts.total - a.predicts.total);
+                    finalExportData.sort((a, b) => b["合计总预测目标"] - a["合计总预测目标"]);
+
+                    const tbody = document.querySelector('#resultTable tbody');
+                    tbody.innerHTML = '';
+                    stores.forEach(s => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${s.city}</td><td><strong>${s.name}</strong></td>
+                            <td class="detail-col">${(s.shares.store * 100).toFixed(1)}%</td><td class="highlight">${s.predicts.store}</td>
+                            <td class="detail-col">${(s.shares.exhibition * 100).toFixed(1)}%</td><td class="highlight">${s.predicts.exhibition}</td>
+                            <td class="detail-col">${(s.shares.referral * 100).toFixed(1)}%</td><td class="highlight">${s.predicts.referral}</td>
+                            <td class="detail-col">${(s.shares.repurchase * 100).toFixed(1)}%</td><td class="highlight">${s.predicts.repurchase}</td>
+                            <td style="font-weight:bold; color:#2b6cb0; font-size:16px;">${s.predicts.total}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+
+                    document.getElementById('resultCard').style.display = 'block';
+                    document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+                    showStatus('✅ 计算成功！已生成详细预测表格。', false);
+
+                } catch (error) {
+                    console.error(error);
+                    showStatus(`❌ 解析数据时发生错误: ${error.message}`, true);
+                } finally {
+                    const btn = document.getElementById('runBtn');
+                    btn.disabled = false;
+                    btn.innerText = '🚀 重新执行精算';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function exportToExcel() {
+            if (finalExportData.length === 0) return;
+            const ws = XLSX.utils.json_to_sheet(finalExportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "目标精算分配表");
+            XLSX.writeFile(wb, "下月各门店目标预测(占比与微调版).xlsx");
+        }
+    </script>
+</body>
+</html>
